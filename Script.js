@@ -3,6 +3,9 @@ let currentStep = 1;
 const totalSteps = 7;
 const opts = { q4: null, q5: null, q6: null };
 
+// Perguntas que exigem seleção obrigatória
+const radioSteps = { 4: 'q4', 5: 'q5', 6: 'q6' };
+
 // ── Sliders ────────────────────────────────────────────────────
 document.getElementById('q1').addEventListener('input', function () {
   document.getElementById('q1v').textContent = parseFloat(this.value).toFixed(1) + 'h';
@@ -29,14 +32,51 @@ atualizarAvisoJogo();
 function selectOpt(grupo, elemento, valor) {
   document.querySelectorAll('#' + grupo + ' .radio-opt').forEach(function (el) {
     el.classList.remove('selected');
+    el.classList.remove('erro-borda');
   });
   elemento.classList.add('selected');
   elemento.querySelector('input[type="radio"]').checked = true;
   opts[grupo] = valor;
+
+  // Remove o aviso de erro assim que o usuário seleciona
+  const card = elemento.closest('.card');
+  const aviso = card.querySelector('.erro-selecao');
+  if (aviso) aviso.remove();
+}
+
+// ── Validação de radio obrigatório ─────────────────────────────
+function mostrarErroPergunta(step) {
+  const card = document.querySelector('#step-' + step + ' .card');
+  if (!card.querySelector('.erro-selecao')) {
+    const aviso = document.createElement('p');
+    aviso.className = 'erro-selecao';
+    aviso.textContent = '⚠️ Selecione uma opção para continuar.';
+    card.appendChild(aviso);
+  }
+  card.querySelectorAll('.radio-opt').forEach(function (el) {
+    if (!el.classList.contains('selected')) el.classList.add('erro-borda');
+  });
+}
+
+function esconderErroPergunta(step) {
+  const card = document.querySelector('#step-' + step + ' .card');
+  if (!card) return;
+  const aviso = card.querySelector('.erro-selecao');
+  if (aviso) aviso.remove();
+  card.querySelectorAll('.radio-opt').forEach(function (el) {
+    el.classList.remove('erro-borda');
+  });
 }
 
 // ── Navegação entre perguntas ──────────────────────────────────
 function goNext() {
+  // Bloqueia se for pergunta de radio sem resposta
+  if (radioSteps[currentStep] && !opts[radioSteps[currentStep]]) {
+    mostrarErroPergunta(currentStep);
+    return;
+  }
+  esconderErroPergunta(currentStep);
+
   if (currentStep < totalSteps) {
     document.getElementById('step-' + currentStep).classList.remove('active');
     currentStep++;
@@ -54,6 +94,7 @@ function goNext() {
 
 function goBack() {
   if (currentStep > 1) {
+    esconderErroPergunta(currentStep);
     document.getElementById('step-' + currentStep).classList.remove('active');
     currentStep--;
     document.getElementById('step-' + currentStep).classList.add('active');
@@ -74,32 +115,25 @@ function atualizarProgresso() {
 function calcularScore(hJogo, hEstudo, hSono, stress, desemp, atrapalha, social) {
   let score = 0;
 
-  // Horas de jogo
   if (hJogo > 5) score += 30;
   else if (hJogo > 3) score += 15;
   else if (hJogo > 1) score += 5;
 
-  // Horas de estudo
   if (hEstudo < 4.5 || hEstudo > 8) score += 25;
   else if (hEstudo < 6) score += 10;
 
-  // Sono
   if (hSono < 6 || hSono > 9) score += 20;
   else if (hSono < 7) score += 10;
 
-  // Desempenho
   if (desemp === 'ruim') score += 15;
   else if (desemp === 'regular') score += 7;
 
-  // Percepção de impacto
   if (atrapalha === 'sempre') score += 15;
   else if (atrapalha === 'frequente') score += 8;
 
-  // Isolamento social
   if (social === 'isolado') score += 10;
   else if (social === 'baixa') score += 5;
 
-  // Estresse
   if (stress >= 8) score += 10;
   else if (stress >= 6) score += 5;
 
@@ -118,18 +152,13 @@ function mostrarResultado() {
 
   const score = calcularScore(hJogo, hEstudo, hSono, stress, desemp, atrapalha, social);
 
-  // Esconder quiz, mostrar resultado
   document.getElementById('quiz').style.display = 'none';
   document.getElementById('result').classList.remove('hidden');
 
-  // ── Badge e título ──
   const badgeWrap = document.getElementById('result-badge-wrap');
   const titulo    = document.getElementById('result-title');
   const descricao = document.getElementById('result-desc');
 
-  // O jogo só deve ser tratado como "causa" do resultado quando ele de fato
-  // pesa no score (acima de 3h/dia). Abaixo disso, quem está pesando são
-  // os outros fatores (sono, estudo, desempenho, estresse, isolamento).
   const jogoEhFatorDeRisco = hJogo > 3;
 
   if (score < 35) {
@@ -161,7 +190,6 @@ function mostrarResultado() {
     }
   }
 
-  // ── Barra de score ──
   const fillEl = document.getElementById('score-fill');
   document.getElementById('score-pct').textContent = score + '%';
   fillEl.style.width = score + '%';
@@ -169,7 +197,6 @@ function mostrarResultado() {
   else if (score >= 35) fillEl.style.background = '#d97706';
   else                  fillEl.style.background = '#16a34a';
 
-  // ── Métricas ──
   const jogoStatus   = hJogo <= 3 ? ['ok','dentro do ideal'] : hJogo <= 5 ? ['warn','atenção'] : ['bad','excessivo'];
   const sonoStatus   = hSono < 6 ? ['bad','ruim'] : hSono < 7 ? ['warn','moderado'] : hSono <= 9 ? ['ok','adequado'] : ['bad','excessivo'];
   const estudoStatus = hEstudo < 4.5 ? ['bad','ruim'] : hEstudo < 6 ? ['warn','moderado'] : hEstudo <= 8 ? ['ok','bom'] : ['bad','exagerado'];
@@ -179,13 +206,11 @@ function mostrarResultado() {
     criarMetrica('Sono/noite',  hSono.toFixed(1) + 'h',   sonoStatus[0],   sonoStatus[1]) +
     criarMetrica('Estudo/dia',  hEstudo.toFixed(1) + 'h', estudoStatus[0], estudoStatus[1]);
 
-  // ── Aviso sobre jogo abaixo de 1h ──
   const gameNoteWrap = document.getElementById('result-game-note');
   gameNoteWrap.innerHTML = hJogo < 1
     ? '<p class="info-tip-gray">Jogar pelo menos 1h por dia não causa um impacto negativo relevante no desempenho — e pode até ajudar a reduzir o estresse.</p>'
     : '';
 
-  // ── Recomendações ──
   const recs = [];
 
   if (hJogo > 5) {
@@ -243,7 +268,6 @@ function mostrarResultado() {
     return criarRecomendacao(rec[0], rec[1], rec[2], rec[3]);
   }).join('');
 
-  // Scroll suave para o topo do resultado
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -288,9 +312,13 @@ function restart() {
 
   document.querySelectorAll('.radio-opt').forEach(function (el) {
     el.classList.remove('selected');
+    el.classList.remove('erro-borda');
   });
   document.querySelectorAll('input[type="radio"]').forEach(function (el) {
     el.checked = false;
+  });
+  document.querySelectorAll('.erro-selecao').forEach(function (el) {
+    el.remove();
   });
 
   document.getElementById('q1').value = 3;   document.getElementById('q1v').textContent = '3.0h';
